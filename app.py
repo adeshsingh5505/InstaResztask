@@ -1,5 +1,4 @@
 import streamlit as st
-import json
 import requests
 from typing import Dict, List
 import google.generativeai as genai
@@ -21,9 +20,7 @@ class WebBrowserTools:
     def scrape_company_info(self, company_name: str) -> Dict:
         try:
             company_name_formatted = company_name.replace(' ', '_')
-            response = requests.get(
-                f"https://en.wikipedia.org/api/rest_v1/page/summary/{company_name_formatted}"
-            )
+            response = requests.get(f"https://en.wikipedia.org/api/rest_v1/page/summary/{company_name_formatted}")
             if response.status_code == 200:
                 data = response.json()
                 description = data.get("extract", "")
@@ -34,16 +31,31 @@ class WebBrowserTools:
         except Exception:
             description = self.generate_description_with_gemini(company_name)
 
+        offerings = self.generate_offerings(description)
+        strategic_focus = self.generate_focus_areas(description)
+
         return {
             "description": description,
-            "products": ["Product A", "Product B"],
-            "focus_areas": ["Focus Area 1", "Focus Area 2"]
+            "products": offerings,
+            "focus_areas": strategic_focus
         }
 
     def generate_description_with_gemini(self, company_name: str) -> str:
         prompt = f"Please write a 2-3 line professional description about the company '{company_name}'."
         response = self.gemini.generate_content(prompt)
         return response.text.strip()
+
+    def generate_focus_areas(self, description: str) -> List[str]:
+        prompt = f"Based on the following description, suggest 2-3 strategic focus areas for the company:\n\n{description}"
+        response = self.gemini.generate_content(prompt)
+        focus_text = response.text.strip()
+        return [area.strip("- ") for area in focus_text.split("\n") if area.strip()]
+
+    def generate_offerings(self, description: str) -> List[str]:
+        prompt = f"Based on the following company description, list 2-3 main products or services they offer:\n\n{description}"
+        response = self.gemini.generate_content(prompt)
+        offerings_text = response.text.strip()
+        return [item.strip("- ") for item in offerings_text.split("\n") if item.strip()]
 
 class ResearchAgent(BaseAgent):
     def __init__(self):
@@ -99,47 +111,22 @@ Please suggest:
 - Improvements to customer experience, operations, supply chain
 - Internal GenAI solutions (chatbots, automated reporting, document search)
 
-Respond with a JSON array format. Each item should have fields: "use_case", "description", and "feasibility".
+Respond with a readable bullet-point format.
 """
         response = self.model.generate_content(prompt)
-        return self._parse_response(response.text)
-
-    def _parse_response(self, response_content: str) -> List[Dict]:
-        try:
-            return json.loads(response_content)
-        except Exception:
-            return [{"use_case_summary": response_content}]
-
-class ResourceCollectorAgent(BaseAgent):
-    def __init__(self):
-        super().__init__("Resource Collector Agent")
-
-    def find_resources(self, use_cases: List[Dict]) -> Dict:
-        self.log_action("Finding resources")
-        resources = {}
-        for case in use_cases:
-            title = case.get("use_case", case.get("use_case_summary", "general"))
-            resources[title] = {
-                "datasets": [f"https://kaggle.com/search?q={title.replace(' ', '+')}"],
-                "models": [f"https://huggingface.co/models?search={title.replace(' ', '+')}"],
-                "github_projects": [f"https://github.com/search?q={title.replace(' ', '+')}"]
-            }
-        return resources
+        return response.text.strip()
 
 class MultiAgentSystem:
     def __init__(self):
         self.research_agent = ResearchAgent()
         self.market_agent = MarketAnalysisAgent()
-        self.resource_agent = ResourceCollectorAgent()
 
     def run(self, company_name: str) -> Dict:
         company_info = self.research_agent.research_company(company_name)
         use_cases = self.market_agent.generate_use_cases(company_info)
-        resources = self.resource_agent.find_resources(use_cases)
         return {
             "company_info": company_info,
-            "ai_use_cases": use_cases,
-            "resource_assets": resources
+            "ai_use_cases": use_cases
         }
 
 st.set_page_config(page_title="Multi-Agent AI Use Case Generator", page_icon="🤖")
@@ -157,7 +144,6 @@ if st.button("Run Agents 🚀"):
 
         company_info = results['company_info']
         use_cases = results['ai_use_cases']
-        resources = results['resource_assets']
 
         st.header("📄 Company Information")
         st.markdown(f"**Company:** {company_info['company']}")
@@ -171,32 +157,7 @@ if st.button("Run Agents 🚀"):
             st.markdown(f"- {area}")
 
         st.header("🚀 AI/GenAI Use Cases")
-        for idx, case in enumerate(use_cases, 1):
-            st.subheader(f"{idx}. {case.get('use_case', 'Unnamed Use Case')}")
-            st.markdown(f"**Description:** {case.get('description', 'No description')}")
-            st.markdown(f"**Feasibility:** {case.get('feasibility', 'Unknown')}")
-            st.markdown("---")
+        st.markdown(use_cases)
 
-        st.header("📚 Resources (Datasets, Models, GitHub Projects)")
-        for title, links in resources.items():
-            st.subheader(f"🔹 {title}")
-            st.markdown("**Datasets:**")
-            for link in links["datasets"]:
-                st.markdown(f"- [{link}]({link})")
-            st.markdown("**Models:**")
-            for link in links["models"]:
-                st.markdown(f"- [{link}]({link})")
-            st.markdown("**GitHub Projects:**")
-            for link in links["github_projects"]:
-                st.markdown(f"- [{link}]({link})")
-            st.markdown("---")
-
-        if st.checkbox("Download results as JSON"):
-            st.download_button(
-                label="📥 Download JSON",
-                data=json.dumps(results, indent=2),
-                file_name=f"{company_name}_analysis.json",
-                mime="application/json"
-            )
     else:
         st.warning("Please enter a company name first!")
