@@ -1,37 +1,49 @@
-
 import streamlit as st
 import json
 import requests
 from typing import Dict, List
 import google.generativeai as genai
 
-genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
 
 class BaseAgent:
     def __init__(self, name: str):
         self.name = name
         self.log = []
+
     def log_action(self, action: str):
         self.log.append(f"{self.name}: {action}")
 
 class WebBrowserTools:
+    def __init__(self):
+        self.gemini = genai.GenerativeModel(model_name="gemini-1.5-pro")
+
     def scrape_company_info(self, company_name: str) -> Dict:
         try:
+            company_name_formatted = company_name.replace(' ', '_')
             response = requests.get(
-                f"https://en.wikipedia.org/api/rest_v1/page/summary/{company_name}"
+                f"https://en.wikipedia.org/api/rest_v1/page/summary/{company_name_formatted}"
             )
             if response.status_code == 200:
                 data = response.json()
-                description = data.get("extract", f"No information found for {company_name}.")
+                description = data.get("extract", "")
+                if not description or "may refer to:" in description:
+                    description = self.generate_description_with_gemini(company_name)
             else:
-                description = f"No information found for {company_name}."
-        except Exception as e:
-            description = f"Error fetching data: {str(e)}"
+                description = self.generate_description_with_gemini(company_name)
+        except Exception:
+            description = self.generate_description_with_gemini(company_name)
+
         return {
             "description": description,
             "products": ["Product A", "Product B"],
             "focus_areas": ["Focus Area 1", "Focus Area 2"]
         }
+
+    def generate_description_with_gemini(self, company_name: str) -> str:
+        prompt = f"Please write a 2-3 line professional description about the company '{company_name}'."
+        response = self.gemini.generate_content(prompt)
+        return response.text.strip()
 
 class ResearchAgent(BaseAgent):
     def __init__(self):
@@ -74,12 +86,20 @@ class MarketAnalysisAgent(BaseAgent):
 
     def generate_use_cases(self, industry_data: Dict) -> List[Dict]:
         self.log_action("Generating AI/ML/GenAI use cases")
-        prompt = f"""You are an AI consultant. Given the following industry details:
+        prompt = f"""You are an AI business consultant.
+Analyze the following industry and suggest AI/ML and Generative AI (GenAI) use cases:
+
 Industry: {industry_data['industry']}
 Description: {industry_data['description']}
 Offerings: {industry_data['offerings']}
-Strategic Focus: {industry_data['strategic_focus']}
-Suggest AI/ML and GenAI use cases. Respond in JSON array with "use_case", "description", and "feasibility".
+Strategic Focus Areas: {industry_data['strategic_focus']}
+
+Please suggest:
+- Practical AI/ML/GenAI solutions
+- Improvements to customer experience, operations, supply chain
+- Internal GenAI solutions (chatbots, automated reporting, document search)
+
+Respond with a JSON array format. Each item should have fields: "use_case", "description", and "feasibility".
 """
         response = self.model.generate_content(prompt)
         return self._parse_response(response.text)
@@ -135,21 +155,47 @@ if st.button("Run Agents 🚀"):
             results = orchestrator.run(company_name)
         st.success('✅ Completed!')
 
-        st.subheader("📄 Company Info")
-        st.json(results['company_info'])
+        company_info = results['company_info']
+        use_cases = results['ai_use_cases']
+        resources = results['resource_assets']
 
-        st.subheader("🚀 AI/GenAI Use Cases")
-        st.json(results['ai_use_cases'])
+        st.header("📄 Company Information")
+        st.markdown(f"**Company:** {company_info['company']}")
+        st.markdown(f"**Industry:** {company_info['industry']}")
+        st.markdown(f"**Description:** {company_info['description']}")
+        st.markdown(f"**Offerings:**")
+        for item in company_info['offerings']:
+            st.markdown(f"- {item}")
+        st.markdown(f"**Strategic Focus Areas:**")
+        for area in company_info['strategic_focus']:
+            st.markdown(f"- {area}")
 
-        st.subheader("📚 Resources (Datasets, Models, GitHub)")
-        st.json(results['resource_assets'])
+        st.header("🚀 AI/GenAI Use Cases")
+        for idx, case in enumerate(use_cases, 1):
+            st.subheader(f"{idx}. {case.get('use_case', 'Unnamed Use Case')}")
+            st.markdown(f"**Description:** {case.get('description', 'No description')}")
+            st.markdown(f"**Feasibility:** {case.get('feasibility', 'Unknown')}")
+            st.markdown("---")
 
-        save_option = st.checkbox("Download result as JSON?")
-        if save_option:
+        st.header("📚 Resources (Datasets, Models, GitHub Projects)")
+        for title, links in resources.items():
+            st.subheader(f"🔹 {title}")
+            st.markdown("**Datasets:**")
+            for link in links["datasets"]:
+                st.markdown(f"- [{link}]({link})")
+            st.markdown("**Models:**")
+            for link in links["models"]:
+                st.markdown(f"- [{link}]({link})")
+            st.markdown("**GitHub Projects:**")
+            for link in links["github_projects"]:
+                st.markdown(f"- [{link}]({link})")
+            st.markdown("---")
+
+        if st.checkbox("Download results as JSON"):
             st.download_button(
-                label="Download JSON",
+                label="📥 Download JSON",
                 data=json.dumps(results, indent=2),
-                file_name=f"{company_name}_ai_use_cases.json",
+                file_name=f"{company_name}_analysis.json",
                 mime="application/json"
             )
     else:
