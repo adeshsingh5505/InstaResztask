@@ -5,7 +5,7 @@ import requests
 from typing import Dict, List
 import google.generativeai as genai
 
-genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+genai.configure(api_key=st.secrets["AIzaSyCkJ5i7JEPu-_TW-FeBgAk4xUVFLzZOm5Q"])
 
 class BaseAgent:
     def __init__(self, name: str):
