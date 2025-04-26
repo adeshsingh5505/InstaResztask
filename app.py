@@ -5,7 +5,7 @@ import requests
 from typing import Dict, List
 import google.generativeai as genai
 
-genai.configure(api_key=st.secrets["AIzaSyCkJ5i7JEPu-_TW-FeBgAk4xUVFLzZOm5Q"])
+genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
 class BaseAgent:
     def __init__(self, name: str):
@@ -122,18 +122,35 @@ class MultiAgentSystem:
             "resource_assets": resources
         }
 
-st.title("🔎 Multi-Agent Company Analyzer")
-company = st.text_input("Enter Company Name:", "")
+st.set_page_config(page_title="Multi-Agent AI Use Case Generator", page_icon="🤖")
+st.title("🤖 Multi-Agent AI Use Case Generator")
+st.write("Enter a company name to generate AI/ML/GenAI use cases and resources:")
 
-if st.button("Analyze"):
-    if company:
+company_name = st.text_input("Company Name")
+
+if st.button("Run Agents 🚀"):
+    if company_name:
         orchestrator = MultiAgentSystem()
-        results = orchestrator.run(company)
-        st.subheader("Company Information")
-        st.json(results["company_info"])
-        st.subheader("AI Use Cases")
-        st.json(results["ai_use_cases"])
-        st.subheader("Resources")
-        st.json(results["resource_assets"])
+        with st.spinner('Agents are working...'):
+            results = orchestrator.run(company_name)
+        st.success('✅ Completed!')
+
+        st.subheader("📄 Company Info")
+        st.json(results['company_info'])
+
+        st.subheader("🚀 AI/GenAI Use Cases")
+        st.json(results['ai_use_cases'])
+
+        st.subheader("📚 Resources (Datasets, Models, GitHub)")
+        st.json(results['resource_assets'])
+
+        save_option = st.checkbox("Download result as JSON?")
+        if save_option:
+            st.download_button(
+                label="Download JSON",
+                data=json.dumps(results, indent=2),
+                file_name=f"{company_name}_ai_use_cases.json",
+                mime="application/json"
+            )
     else:
-        st.warning("Please enter a company name!")
+        st.warning("Please enter a company name first!")
